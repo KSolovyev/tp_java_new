@@ -45,7 +45,7 @@ public class RegistrationController {
         return ResponseEntity.ok(new SuccessResponse(login));
     }
 
-    @RequestMapping(path = "/api/session", method = RequestMethod.POST)
+    @RequestMapping(path = "/api/session", method = RequestMethod.POST, consumes = "application/json")
     public ResponseEntity auth(@RequestParam(name = "login") String login,
                                @RequestParam(name = "password") String password) {
         if (StringUtils.isEmpty(login)
@@ -63,6 +63,9 @@ public class RegistrationController {
         private String login;
         private String password;
         private String email;
+
+        private RegistrationRequest() {
+        }
 
         private RegistrationRequest(String login, String password, String email) {
             this.login = login;
