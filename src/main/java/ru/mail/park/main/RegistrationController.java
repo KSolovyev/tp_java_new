@@ -5,10 +5,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.util.HtmlUtils;
 import ru.mail.park.model.UserProfile;
 import ru.mail.park.services.AccountService;
 
 import javax.servlet.http.HttpSession;
+import java.math.BigInteger;
+import java.security.SecureRandom;
 
 /**
  * Created by Solovyev on 06/09/16.
@@ -23,67 +26,39 @@ public class RegistrationController {
         this.accountService = accountService;
     }
 
-    @RequestMapping(path = "/api/user/", method = RequestMethod.POST)
-    public ResponseEntity login(@RequestBody RegistrationRequest body,
+    @RequestMapping(path = "/api/guest/", method = RequestMethod.POST, consumes = "application/json", produces = "application/json")
+    public ResponseEntity guestLogin(@RequestBody RegistrationRequest body,
                                 HttpSession httpSession) {
-        final String sessionId = httpSession.getId();
-
-        final String login = body.getLogin();
-        final String password = body.getPassword();
-        final String email = body.getEmail();
-        if (StringUtils.isEmpty(login)
-                || StringUtils.isEmpty(password)
-                || StringUtils.isEmpty(email)) {
+        final String unsafeLogin = body.getLogin();
+        final String password = new BigInteger(130, new SecureRandom()).toString(32);
+        if (StringUtils.isEmpty(unsafeLogin)) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("{}");
         }
-        final UserProfile existingUser = accountService.getUser(login);
+        final String login = HtmlUtils.htmlEscape(unsafeLogin);
+        final UserProfile existingUser = accountService.getUserByName(login);
         if (existingUser != null) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("{}");
         }
-
-        accountService.addUser(login, password, email);
+        final UserProfile user = accountService.addUser(login, password, "");
+        httpSession.setAttribute("userId", user.getId().getId());
         return ResponseEntity.ok(new SuccessResponse(login));
     }
 
-    @RequestMapping(path = "/api/session", method = RequestMethod.POST, consumes = "application/json")
-    public ResponseEntity auth(@RequestParam(name = "login") String login,
-                               @RequestParam(name = "password") String password) {
-        if (StringUtils.isEmpty(login)
-                || StringUtils.isEmpty(password)) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("{}");
-        }
-        final UserProfile user = accountService.getUser(login);
-        if (user.getPassword().equals(password)) {
-            return ResponseEntity.ok(new SuccessResponse(user.getLogin()));
-        }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("{}");
-    }
-
+    @SuppressWarnings("unused")
     private static final class RegistrationRequest {
         private String login;
-        private String password;
-        private String email;
 
         private RegistrationRequest() {
         }
 
-        private RegistrationRequest(String login, String password, String email) {
+        private RegistrationRequest(String login) {
             this.login = login;
-            this.password = password;
-            this.email = email;
         }
 
         public String getLogin() {
             return login;
         }
 
-        public String getPassword() {
-            return password;
-        }
-
-        public String getEmail() {
-            return email;
-        }
     }
 
     private static final class SuccessResponse {
