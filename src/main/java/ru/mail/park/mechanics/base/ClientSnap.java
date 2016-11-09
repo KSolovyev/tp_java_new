@@ -2,8 +2,6 @@ package ru.mail.park.mechanics.base;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import org.jetbrains.annotations.NotNull;
-import ru.mail.park.mechanics.base.Coords;
-import ru.mail.park.mechanics.base.Direction;
 
 /**
  * Created by Solovyev on 03/11/2016.
@@ -13,14 +11,14 @@ public class ClientSnap {
 
 
     @NotNull
-    private Direction direction;
+    private Way direction;
     @NotNull
     private Coords mouse;
     private boolean isFiring;
     private long frameTime;
 
     @NotNull
-    public Direction getDirection() {
+    public Way getDirection() {
         return direction;
     }
 
@@ -38,7 +36,7 @@ public class ClientSnap {
         return frameTime;
     }
 
-    public void setDirection(@NotNull Direction direction) {
+    public void setDirection(@NotNull Way direction) {
         this.direction = direction;
     }
 

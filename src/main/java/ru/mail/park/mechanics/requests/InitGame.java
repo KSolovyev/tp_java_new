@@ -2,6 +2,7 @@ package ru.mail.park.mechanics.requests;
 
 import org.jetbrains.annotations.NotNull;
 import ru.mail.park.mechanics.base.ServerPlayerSnap;
+import ru.mail.park.mechanics.game.GameObject;
 import ru.mail.park.model.Id;
 import ru.mail.park.model.UserProfile;
 
@@ -16,6 +17,8 @@ public class InitGame {
     public static final class Request {
         @NotNull
         private Id<UserProfile> self;
+        @NotNull
+        private Id<GameObject> selfSquareId;
         @NotNull
         private List<ServerPlayerSnap> players;
         @NotNull
@@ -64,6 +67,14 @@ public class InitGame {
 
         public void setGunColors(@NotNull Map<Id<UserProfile>, String> gunColors) {
             this.gunColors = gunColors;
+        }
+
+        public Id<GameObject> getSelfSquareId() {
+            return selfSquareId;
+        }
+
+        public void setSelfSquareId(Id<GameObject> selfSquareId) {
+            this.selfSquareId = selfSquareId;
         }
     }
 

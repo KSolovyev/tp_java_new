@@ -19,7 +19,7 @@ import java.util.concurrent.Executors;
 public class MechanicsExecutor implements Runnable {
     @NotNull
     private static final Logger LOGGER = LoggerFactory.getLogger(MechanicsExecutor.class);
-    private static final long STEP_TIME = 100;
+    private static final long STEP_TIME = 50;
 
     @NotNull
     private final GameMechanics gameMechanics;
@@ -45,12 +45,9 @@ public class MechanicsExecutor implements Runnable {
         long lastFrameMillis = STEP_TIME;
         while (true) {
             final long before = clock.millis();
-            try {
-                gameMechanics.gmStep(lastFrameMillis);
-            } catch (RuntimeException ex) {
-                LOGGER.error("game mechanics is reseting due to exception", ex);
-                gameMechanics.reset();
-            }
+
+            gameMechanics.gmStep(lastFrameMillis);
+
             final long after = clock.millis();
             TimeHelper.sleep(STEP_TIME - (after - before));
 

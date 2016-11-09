@@ -22,21 +22,12 @@ import java.util.concurrent.TimeUnit;
  * Created by Solovyev on 06/09/16.
  */
 @SpringBootApplication
-@EnableWebSocket
-public class Application implements WebSocketConfigurer {
-
+public class Application {
     public static final long IDLE_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(1);
     public static final int BUFFER_SIZE_BYTES = 8192;
 
     public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
-
-    @Override
-    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(gameWebSocketHandler(), "/game")
-                .addInterceptors(new HttpSessionHandshakeInterceptor())
-        .setAllowedOrigins("*");
+        SpringApplication.run(new Object[]{WebSocketConfig.class, Application.class}, args);
     }
 
     @Bean
@@ -53,5 +44,6 @@ public class Application implements WebSocketConfigurer {
     public WebSocketHandler gameWebSocketHandler() {
         return new PerConnectionWebSocketHandler(GameSocketHandler.class);
     }
+
 
 }

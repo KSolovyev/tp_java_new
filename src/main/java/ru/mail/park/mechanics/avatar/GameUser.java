@@ -10,19 +10,18 @@ import ru.mail.park.model.UserProfile;
  */
 public class GameUser {
     @NotNull
-    private UserProfile userProfile;
+    private final UserProfile userProfile;
     @NotNull
-    private TimingPart timingPart;
-    @NotNull
-    private PositionPart positionPart;
+    private final TimingPart timingPart;
+    private final Square square;
 
     //TODO: Collider
 
 
     public GameUser(@NotNull UserProfile userProfile) {
         this.userProfile = userProfile;
+        square = new Square();
         this.timingPart = new TimingPart();
-        this.positionPart = new PositionPart();
     }
 
     @NotNull
@@ -35,9 +34,8 @@ public class GameUser {
         return userProfile;
     }
 
-    @NotNull
-    public PositionPart getPositionPart() {
-        return positionPart;
+    public Square getSquare() {
+        return square;
     }
 
     @NotNull
@@ -47,13 +45,10 @@ public class GameUser {
 
     @NotNull
     public ServerPlayerSnap generateSnap() {
+
         final ServerPlayerSnap result = new ServerPlayerSnap();
         result.setUserId(getId());
-        result.setBody(positionPart.getBody());
-        result.setMouse(positionPart.getMouse());
-        result.setDirection(positionPart.getDirection());
-        //TODO: Firing
-        result.setFiring(false);
+        result.setPlayerSquare(square.getSnap());
         return result;
     }
 }

@@ -2,8 +2,6 @@ package ru.mail.park.mechanics.internal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import ru.mail.park.mechanics.GameSession;
 import ru.mail.park.mechanics.avatar.GameUser;
@@ -14,6 +12,7 @@ import ru.mail.park.websocket.RemotePointService;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -22,17 +21,17 @@ import java.util.List;
 @Service
 public class ServerSnapshotService {
     @NotNull
-    private RemotePointService remotePointService;
+    private final RemotePointService remotePointService;
 
     @NotNull
-    private ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ServerSnapshotService(@NotNull RemotePointService remotePointService) {
         this.remotePointService = remotePointService;
     }
 
     public void sendSnapshotsFor(@NotNull GameSession gameSession, long frameTime) {
-        final List<GameUser> players = new ArrayList<>();
+        final Collection<GameUser> players = new ArrayList<>();
         players.add(gameSession.getFirst());
         players.add(gameSession.getSecond());
         final List<ServerPlayerSnap> playersSnaps = new ArrayList<>();

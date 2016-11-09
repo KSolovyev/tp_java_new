@@ -9,6 +9,7 @@ import org.springframework.web.socket.CloseStatus;
 import ru.mail.park.mechanics.Config;
 import ru.mail.park.mechanics.GameSession;
 import ru.mail.park.mechanics.avatar.GameUser;
+import ru.mail.park.mechanics.avatar.PositionPart;
 import ru.mail.park.mechanics.base.Coords;
 import ru.mail.park.mechanics.base.ServerPlayerSnap;
 import ru.mail.park.mechanics.requests.InitGame;
@@ -18,10 +19,7 @@ import ru.mail.park.websocket.Message;
 import ru.mail.park.websocket.RemotePointService;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Created by Solovyev on 03/11/2016.
@@ -31,32 +29,34 @@ public class GameInitService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerSnapshotService.class);
 
     @NotNull
-    private RemotePointService remotePointService;
+    private final RemotePointService remotePointService;
     @NotNull
-    private ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public GameInitService(@NotNull RemotePointService remotePointService) {
         this.remotePointService = remotePointService;
     }
 
     public void initGameFor(@NotNull GameSession gameSession) {
-        gameSession.getFirst().getPositionPart().setBody(new Coords(0.0f, 0.0f));
-        gameSession.getSecond().getPositionPart().setBody(
+        gameSession.getFirst().getSquare().claimPart(PositionPart.class).setBody(new Coords(0.0f, 0.0f));
+        gameSession.getSecond().getSquare().claimPart(PositionPart.class).setBody(
                 new Coords(Config.PLAYGROUND_WIDTH - Config.SQUARE_SIZE,
                         Config.PLAYGROUND_HEIGHT - Config.SQUARE_SIZE)
         );
-        final List<GameUser> players = new ArrayList<>();
+        final Collection<GameUser> players = new ArrayList<>();
         players.add(gameSession.getFirst());
         players.add(gameSession.getSecond());
         for (GameUser player : players) {
             final InitGame.Request initMessage = createInitMessageFor(gameSession, player.getId());
             //noinspection OverlyBroadCatchBlock
             try {
-                final Message message = new Message(InitGame.Request.class.getName(), objectMapper.writeValueAsString(initMessage));
+                final Message message = new Message(InitGame.Request.class.getName(),
+                        objectMapper.writeValueAsString(initMessage));
                 remotePointService.sendMessageToUser(player.getId(), message);
             } catch (IOException e) {
                 //TODO: Reentrance mechanism
-                players.forEach(playerToCutOff -> remotePointService.cutDownConnection(playerToCutOff.getId(), CloseStatus.SERVER_ERROR));
+                players.forEach(playerToCutOff -> remotePointService.cutDownConnection(playerToCutOff.getId(),
+                        CloseStatus.SERVER_ERROR));
                 LOGGER.error("Unnable to start a game", e);
             }
         }
@@ -77,7 +77,7 @@ public class GameInitService {
         colors.put(gameSession.getEnemy(self).getId(), Config.ENEMY_COLOR);
         gunColors.put(gameSession.getEnemy(self).getId(), Config.ENEMY_GUN_COLOR);
 
-        final List<GameUser> players = new ArrayList<>();
+        final Collection<GameUser> players = new ArrayList<>();
         players.add(gameSession.getFirst());
         players.add(gameSession.getSecond());
         for (GameUser player : players) {
@@ -86,6 +86,7 @@ public class GameInitService {
         }
 
         initGameMessage.setSelf(userId);
+        initGameMessage.setSelfSquareId(gameSession.getSelf(userId).getSquare().getId());
         initGameMessage.setColors(colors);
         initGameMessage.setGunColors(gunColors);
         initGameMessage.setNames(names);

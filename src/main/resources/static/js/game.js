@@ -11,7 +11,10 @@ Game.gunLength = 30;
 Game.gunWidth = 5;
 Game.mouse = {x: 0.0, y: 0.0};
 Game.clientReinterpt = 50;
+Game.serverSnaps = [];
 Game.userId = null;
+Game.userSquareId = null;
+Game.frameTimeLeft = 0;
 
 function ClientSnap() {
     this.direction = "None";
@@ -20,16 +23,37 @@ function ClientSnap() {
     this.frameTime = 0;
 }
 
-function PlayerSnap() {
+function PlayerSnap(snapMsg) {
     this.id = 0;
-    this.mouse = {x: 0.0, y: 0.0};
-    this.body = {x: 0.0, y: 0.0};
-    this.isFiring = false;
-    this.direction = "None";
+    this.square = {
+        id:null,
+        body : {x: 0.0, y: 0.0},
+        direction : "None",
+        lookingAt:{x: 0.0, y: 0.0},
+        isFiring : false
+    };
+
+    if (snapMsg != null) {
+        var squareSnap = snapMsg.playerSquare;
+        this.id = snapMsg.userId;
+        this.square.id = squareSnap.id;
+        for(var i = 0; i < squareSnap.partSnaps.length; i++) {
+            var part = squareSnap.partSnaps[i];
+            if (part.name === "PositionPart") {
+                this.square.body = part.body;
+                //TODO: direction
+            }
+            else if(part.name === "MousePart") {
+                this.square.lookingAt = part.mouse;
+            }
+            //TODO: firing
+        }
+    }
 }
 function ServerSnap() {
     this.players = [];
     this.serverFrameTime = 0;
+    this.elapsed  = 0;
 }
 
 function Square() {
@@ -61,7 +85,6 @@ Square.prototype.draw = function (context) {
     context.restore();
 };
 
-
 Game.initialize = function () {
     this.entities = [];
     canvas = document.getElementById('playground');
@@ -69,31 +92,49 @@ Game.initialize = function () {
         Console.log('Error: 2d canvas not supported by this browser.');
         return;
     }
+    var buttons = [];
+    var getDirectionByCode = function (code) {
+        if (code === 65 || code === 37) {
+            return 'Left';
+        } else if (code === 87 || code === 38) {
+            return 'Up';
+        } else if (code === 68 || code === 39) {
+            return 'Right';
+        } else if (code === 83 || code === 40) {
+            return 'Down';
+        }
+        else return 'None'
+    };
 
     this.context = canvas.getContext('2d');
     window.addEventListener('keydown', function (e) {
         var code = e.keyCode;
-
-        if (code === 65 || code === 37) {
-            Game.direction = 'Left';
-        }else if (code === 87 || code === 38) {
-            Game.direction = 'Up';
-        }else if (code === 68 || code === 39) {
-            Game.direction = 'Right';
-        }else if (code === 83 || code === 40) {
-            Game.direction = 'Down';
+        if (code > 36 && code < 41 || code == 65 || code == 87 || code == 68 || code == 83) {
+            Game.direction = getDirectionByCode(code);
+            buttons[Game.direction] = true;
         }
+
     }, false);
     window.addEventListener('keyup', function (e) {
         var code = e.keyCode;
         if (code > 36 && code < 41 || code == 65 || code == 87 || code == 68 || code == 83) {
+            var disabledDirection = getDirectionByCode(code);
+            buttons[disabledDirection] = false;
+            //trying to find another pushed button
+            var directions = Object.keys(buttons);
+            for (var i = 0; i < directions.length; i++) {
+                if (buttons[directions[i]] === true) {
+                    Game.direction = directions[i];
+                    return
+                }
+            }
             Game.direction = "None"
         }
     }, false);
     window.addEventListener('mousemove', function (e) {
         if (Game.userId != null) {
-            Game.entities[Game.userId].mouse.x = e.clientX;
-            Game.entities[Game.userId].mouse.y = e.clientY;
+            Game.entities[Game.userSquareId].mouse.x = e.clientX;
+            Game.entities[Game.userSquareId].mouse.y = e.clientY;
         }
     });
 
@@ -161,6 +202,7 @@ function updatePing() {
 var pingPeriod = 5000;
 var lastPingTime = 0;
 Game.lastFrameTime = 0;
+Game.initialSkipTime = Game.clientReinterpt;
 
 
 Game.run = (function () {
@@ -176,6 +218,11 @@ Game.run = (function () {
             lastPingTime = time;
         }
         Game.sendClientSnap(frameTime);
+        if (Game.initialSkipTime < 0) {
+            Game.updateObjects(frameTime);
+        } else {
+            Game.initialSkipTime -= frameTime;
+        }
         Game.draw();
         if (Game.nextFrame != null) {
             Game.nextFrame();
@@ -185,9 +232,70 @@ Game.run = (function () {
     };
 })();
 
+Game.updateObjects = function(frameTime) {
+    var moveTimeOnSnap = 0;
+    var snapFinished = false;
+    var player = null;
+    var mouse = null;
+    var moveTime = frameTime + Game.frameTimeLeft;
+    //lagging
+    if (Game.serverSnaps.length > 2) {
+        window.console.info("lags detected")
+        var snapAdjustTo =  Game.serverSnaps[Game.serverSnaps.length - 2];
+        for (i = 0; i < snapAdjustTo.players.length; i++) {
+            player = snapAdjustTo.players[i];
+            Game.entities[player.square.id].body = player.square.body;
+            if (player.id === Game.userId) {
+                continue;
+            }
+            Game.entities[player.square.id].mouse = player.square.lookingAt;
+        }
+        Game.serverSnaps = [Game.serverSnaps[Game.serverSnaps.length - 1]];
+        return;
+    }
+    while (moveTime > 0) {
+        if (Game.serverSnaps.length < 1) {
+            Game.frameTimeLeft += moveTime;
+            return
+        }
+        var serverSnap = Game.serverSnaps[0];
+        if (serverSnap.serverFrameTime - serverSnap.elapsed > moveTime) {
+            moveTimeOnSnap = moveTime;
+            snapFinished = false;
+        } else {
+            moveTimeOnSnap = serverSnap.serverFrameTime - serverSnap.elapsed;
+            snapFinished = true;
+        }
+        for (i = 0; i < serverSnap.players.length; i++) {
+            player = serverSnap.players[i];
+            var body = Game.entities[player.square.id].body;
+            var overallDX = player.square.body.x - body.x;
+            var overallDY = player.square.body.y - body.y;
+            body.x += overallDX * moveTimeOnSnap / serverSnap.serverFrameTime;
+            body.y += overallDY * moveTimeOnSnap / serverSnap.serverFrameTime;
+            // Game.entities[player.square.id].body = player.square.body;
+            if (player.id === Game.userId) {
+                continue;
+            }
+            mouse = Game.entities[player.square.id].mouse;
+            overallDX = player.square.lookingAt.x - mouse.x;
+            overallDY = player.square.lookingAt.y - mouse.y;
+            mouse.x += overallDX * moveTimeOnSnap / serverSnap.serverFrameTime;
+            mouse.y += overallDY * moveTimeOnSnap / serverSnap.serverFrameTime;
+        }
+        if (snapFinished) {
+            Game.serverSnaps.splice(0,1);
+            moveTime -= moveTimeOnSnap;
+        } else {
+            serverSnap.elapsed += moveTimeOnSnap;
+            moveTime = 0;
+        }
+    }
+};
+
 Game.sendClientSnap = function (frameTime) {
     var snap = new ClientSnap();
-    var me = Game.entities[Game.userId];
+    var me = Game.entities[Game.userSquareId];
     snap.direction = Game.direction;
     snap.mouse = me.mouse;
     snap.frameTime = frameTime;
@@ -197,24 +305,15 @@ Game.sendClientSnap = function (frameTime) {
 
 Game.onServerSnapArrived = function (snapRaw) {
     var serverSnap = new ServerSnap();
+    serverSnap.timeArrived = (new Date()).getTime();
     for(var i = 0; i < snapRaw.players.length; i++) {
         var playerRaw = snapRaw.players[i];
-        var playerSnap = new PlayerSnap();
-        playerSnap.id = playerRaw.userId;
-        playerSnap.mouse = playerRaw.mouse;
-        playerSnap.body = playerRaw.body;
+        var playerSnap = new PlayerSnap(playerRaw);
         serverSnap.players.push(playerSnap);
     }
     serverSnap.serverFrameTime = snapRaw.serverFrameTime;
+    Game.serverSnaps.push(serverSnap);
     //Todo: Wait for another snap and launch animation with Game.clientReinterpt delay
-    for (i = 0; i < serverSnap.players.length; i++) {
-        var player = serverSnap.players[i];
-        Game.entities[player.id].body = player.body;
-        if (player.id === Game.userId) {
-            continue;
-        }
-        Game.entities[player.id].mouse = player.mouse;
-    }
 };
 
 Game.tryStartGame = function () {
@@ -224,14 +323,17 @@ Game.tryStartGame = function () {
 Game.onGameStarted = function (initMessage) {
     Game.lastFrameTime = (new Date).getTime();
     Game.userId = initMessage.self;
+    Game.userSquareId = initMessage.selfSquareId;
     // for(player in initMessage.players) {
     for(var i = 0; i < initMessage.players.length; i++) {
         var playerRaw = initMessage.players[i];
-        Game.addSquare(playerRaw.userId, initMessage.names[playerRaw.userId],
-            initMessage.colors[playerRaw.userId], initMessage.gunColors[playerRaw.userId]);
-        Game.updateSquare(playerRaw.userId, playerRaw.body, playerRaw.mouse);
+        var palyerSnap = new PlayerSnap(playerRaw);
+        Game.addSquare(palyerSnap.square.id, initMessage.names[palyerSnap.id],
+            initMessage.colors[palyerSnap.id], initMessage.gunColors[palyerSnap.id]);
 
-        Console.log('Info: ' + Game.entities[playerRaw.userId].name + ' join the game!')
+        Game.updateSquare(palyerSnap.square.id, palyerSnap.square.body, palyerSnap.square.lookingAt);
+
+        Console.log('Info: ' + Game.entities[palyerSnap.square.id].name + ' joins the game!')
     }
     Game.startGameLoop();
 };

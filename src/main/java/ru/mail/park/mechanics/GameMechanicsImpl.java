@@ -4,11 +4,8 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.web.socket.CloseStatus;
 import ru.mail.park.mechanics.base.ClientSnap;
-import ru.mail.park.mechanics.internal.ClientSnapshotsService;
-import ru.mail.park.mechanics.internal.GameInitService;
-import ru.mail.park.mechanics.internal.ServerSnapshotService;
+import ru.mail.park.mechanics.internal.*;
 import ru.mail.park.model.Id;
 import ru.mail.park.model.UserProfile;
 import ru.mail.park.services.AccountService;
@@ -20,7 +17,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 /**
  * @author k.solovyev
  */
-@SuppressWarnings("unused")
+@SuppressWarnings({"unused", "FieldMayBeFinal"})
 @Service
 public class GameMechanicsImpl implements GameMechanics {
     @NotNull
@@ -39,13 +36,13 @@ public class GameMechanicsImpl implements GameMechanics {
     private RemotePointService remotePointService;
 
     @NotNull
-    private GameInitService gameInitService;
+    private MovementService movementService;
+
+    @NotNull
+    private GameSessionService gameSessionService;
 
     @NotNull
     private Set<Id<UserProfile>> playingUsers = new HashSet<>();
-
-    @NotNull
-    private Set<GameSession> allSessions = new LinkedHashSet<>();
 
     @NotNull
     private ConcurrentLinkedQueue<Id<UserProfile>> waiters = new ConcurrentLinkedQueue<>();
@@ -53,12 +50,16 @@ public class GameMechanicsImpl implements GameMechanics {
     @NotNull
     private final Queue<Runnable> tasks = new ConcurrentLinkedQueue<>();
 
-    public GameMechanicsImpl(@NotNull AccountService accountService, @NotNull ServerSnapshotService serverSnapshotService, @NotNull RemotePointService remotePointService, @NotNull GameInitService gameInitService) {
+    @SuppressWarnings("LongLine")
+    public GameMechanicsImpl(@NotNull AccountService accountService, @NotNull ServerSnapshotService serverSnapshotService,
+                             @NotNull RemotePointService remotePointService, @NotNull MovementService movementService,
+                             @NotNull GameSessionService gameSessionService) {
         this.accountService = accountService;
         this.serverSnapshotService = serverSnapshotService;
         this.remotePointService = remotePointService;
-        this.gameInitService = gameInitService;
-        this.clientSnapshotsService = new ClientSnapshotsService();
+        this.movementService = movementService;
+        this.gameSessionService = gameSessionService;
+        this.clientSnapshotsService = new ClientSnapshotsService(movementService);
     }
 
     @Override
@@ -68,25 +69,28 @@ public class GameMechanicsImpl implements GameMechanics {
 
     @Override
     public void addUser(@NotNull Id<UserProfile> user) {
-        if (playingUsers.contains(user)) {
+        if (gameSessionService.isPlaying(user)) {
             return;
         }
         waiters.add(user);
     }
 
     private void tryStartGames() {
-        final List<UserProfile> matchPlayers = new ArrayList<>();
+        final Set<UserProfile> matchedPlayers = new LinkedHashSet<>();
 
-        while (waiters.size() >= 2 || waiters.size() >= 1 && matchPlayers.size() >= 1) {
+        while (waiters.size() >= 2 || waiters.size() >= 1 && matchedPlayers.size() >= 1) {
             final Id<UserProfile> candidate = waiters.poll();
             if (!insureCandidate(candidate)) {
                 continue;
             }
-            matchPlayers.add(accountService.getUserById(candidate));
-            if(matchPlayers.size() == 2) {
-                starGame(matchPlayers.get(0), matchPlayers.get(1));
+            matchedPlayers.add(accountService.getUserById(candidate));
+            if(matchedPlayers.size() == 2) {
+                final Iterator<UserProfile> iterator = matchedPlayers.iterator();
+                gameSessionService.startGame(iterator.next(), iterator.next());
+                matchedPlayers.clear();
             }
         }
+        matchedPlayers.stream().map(UserProfile::getId).forEach(waiters::add);
     }
 
     private boolean insureCandidate(@NotNull Id<UserProfile> candidate) {
@@ -107,43 +111,32 @@ public class GameMechanicsImpl implements GameMechanics {
             }
         }
 
-        for (GameSession session : allSessions) {
+        for (GameSession session : gameSessionService.getSessions()) {
             clientSnapshotsService.processSnapshotsFor(session);
         }
 
-        //TODO: game objects
+        movementService.executeMoves();
 
-        //TODO: server side ping update
-
-        //TODO: Collisions
-
-        final Iterator<GameSession> iterator = allSessions.iterator();
+        final Iterator<GameSession> iterator = gameSessionService.getSessions().iterator();
+        final List<GameSession> sessionsToTerminate = new ArrayList<>();
         while (iterator.hasNext()) {
             final GameSession session = iterator.next();
             try {
                 serverSnapshotService.sendSnapshotsFor(session, frameTime);
             } catch (RuntimeException ex) {
                 LOGGER.error("Failed send snapshots, terminating the session", ex);
-                remotePointService.cutDownConnection(session.getFirst().getId(), CloseStatus.SERVER_ERROR);
-                remotePointService.cutDownConnection(session.getSecond().getId(), CloseStatus.SERVER_ERROR);
-                playingUsers.remove(session.getFirst().getId());
-                playingUsers.remove(session.getSecond().getId());
-                iterator.remove();
+                sessionsToTerminate.add(session);
             }
         }
+        sessionsToTerminate.forEach(gameSessionService::notifyGameIsOver);
 
         tryStartGames();
         clientSnapshotsService.clear();
+        movementService.clear();
     }
 
     @Override
     public void reset() {
 
-    }
-
-    private void starGame(@NotNull UserProfile first, @NotNull UserProfile second) {
-        final GameSession gameSession = new GameSession(first, second);
-        gameInitService.initGameFor(gameSession);
-        allSessions.add(gameSession);
     }
 }
