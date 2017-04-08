@@ -31,16 +31,6 @@ public class Application {
     }
 
     @Bean
-    public DefaultHandshakeHandler handshakeHandler() {
-        final WebSocketPolicy policy = new WebSocketPolicy(WebSocketBehavior.SERVER);
-        policy.setInputBufferSize(BUFFER_SIZE_BYTES);
-        policy.setIdleTimeout(IDLE_TIMEOUT_MS);
-
-        return new DefaultHandshakeHandler(
-                new JettyRequestUpgradeStrategy(new WebSocketServerFactory(policy)));
-    }
-
-    @Bean
     public WebSocketHandler gameWebSocketHandler() {
         return new PerConnectionWebSocketHandler(GameSocketHandler.class);
     }
